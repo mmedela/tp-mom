@@ -56,6 +56,9 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
         #Diferencio desconceccion por problema de Rabbit que por problema de network
         except (ConnectionError, OSError) as e:
             raise MessageMiddlewareDisconnectedError (str(e)) from e 
+
+    def stop_consuming(self):
+        self.channel.stop_consuming()
         
 
 class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
@@ -119,3 +122,6 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
         #Diferencio desconceccion por problema de Rabbit que por problema de network
         except (ConnectionError, OSError) as e:
             raise MessageMiddlewareDisconnectedError (str(e)) from e 
+
+    def stop_consuming(self):
+            self.channel.stop_consuming()
