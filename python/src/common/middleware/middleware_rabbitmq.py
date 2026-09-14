@@ -93,3 +93,29 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
         #Diferencio desconceccion por problema de Rabbit que por problema de network
         except (ConnectionError, OSError) as e:
             raise MessageMiddlewareDisconnectedError (str(e)) from e 
+
+
+    def start_consuming(self, on_message_callback):
+        def _on_message(ch: BlockingChannel, method:  PikaSpec.Basic.Deliver, _properties: PikaSpec.BasicProperties, body: bytes):
+            ack = lambda: ch.basic_ack(delivery_tag=method.delivery_tag)
+            nack = lambda: ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+            on_message_callback(body, ack, nack)
+
+        try:
+
+            #Necesito auto_ack=False, para que se llame a las funciones ack y nack. En la version actual
+            #es False por defecto. 
+            self.channel.basic_consume(queue=self.queue, on_message_callback=_on_message)
+            self.channel.start_consuming()
+
+        #Capturo errores por desconeccion especificos de RabbitMQ, no se tiene en cuenta
+        #desconeccion por problemas de socket, por ejemplo
+        except (PikaExceptions.AMQPConnectionError,
+                PikaExceptions.ChannelWrongStateError) as e:
+            raise MessageMiddlewareDisconnectedError (str(e)) from e
+        
+        except PikaExceptions.AMQPError as e:
+            raise MessageMiddlewareMessageError(str(e)) from e 
+        #Diferencio desconceccion por problema de Rabbit que por problema de network
+        except (ConnectionError, OSError) as e:
+            raise MessageMiddlewareDisconnectedError (str(e)) from e 
