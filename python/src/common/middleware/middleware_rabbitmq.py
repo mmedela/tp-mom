@@ -59,6 +59,23 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
 
     def stop_consuming(self):
         self.channel.stop_consuming()
+
+    def close(self):
+        try:
+            self.channel.close()
+            self.connection.close()
+        #Capturo errores por desconeccion especificos de RabbitMQ, no se tiene en cuenta
+        #desconeccion por problemas de socket, por ejemplo
+        except (PikaExceptions.AMQPConnectionError,
+                PikaExceptions.ChannelWrongStateError) as e:
+            raise MessageMiddlewareDisconnectedError (str(e)) from e
+        
+        except PikaExceptions.AMQPError as e:
+            raise MessageMiddlewareMessageError(str(e)) from e 
+        #Diferencio desconceccion por problema de Rabbit que por problema de network
+        except (ConnectionError, OSError) as e:
+            raise MessageMiddlewareDisconnectedError (str(e)) from e 
+        
         
 
 class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
@@ -125,3 +142,19 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
 
     def stop_consuming(self):
             self.channel.stop_consuming()
+
+    def close(self):
+            try:
+                self.channel.close()
+                self.connection.close()
+            #Capturo errores por desconeccion especificos de RabbitMQ, no se tiene en cuenta
+            #desconeccion por problemas de socket, por ejemplo
+            except (PikaExceptions.AMQPConnectionError,
+                    PikaExceptions.ChannelWrongStateError) as e:
+                raise MessageMiddlewareDisconnectedError (str(e)) from e
+            
+            except PikaExceptions.AMQPError as e:
+                raise MessageMiddlewareMessageError(str(e)) from e 
+            #Diferencio desconceccion por problema de Rabbit que por problema de network
+            except (ConnectionError, OSError) as e:
+                raise MessageMiddlewareDisconnectedError (str(e)) from e 
