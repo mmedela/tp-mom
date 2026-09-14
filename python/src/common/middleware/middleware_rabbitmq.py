@@ -50,4 +50,20 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
             self.channel.queue_bind(exchange=self.exchange_name, queue=self.queue, routing_key=routing_key)
         
 
-        pass
+    def send(self, message):
+        try:
+            for routing_key in self.routing_keys:
+                self.channel.basic_publish(exchange=self.exchange_name, routing_key=routing_key, body=message)
+
+        #Capturo errores por desconeccion especificos de RabbitMQ, no se tiene en cuenta
+        #desconeccion por problemas de socket, por ejemplo
+        except (PikaExceptions.AMQPConnectionError,
+                PikaExceptions.ChannelWrongStateError) as e:
+            raise MessageMiddlewareDisconnectedError (str(e)) from e
+        
+        except PikaExceptions.AMQPError as e:
+            raise MessageMiddlewareMessageError(str(e)) from e 
+        
+        #Diferencio desconceccion por problema de Rabbit que por problema de network
+        except (ConnectionError, OSError) as e:
+            raise MessageMiddlewareDisconnectedError (str(e)) from e 
