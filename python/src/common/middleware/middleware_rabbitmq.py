@@ -1,8 +1,9 @@
 import pika
 from pika.adapters.blocking_connection import BlockingChannel
+import pika.exceptions as PikaExceptions
 import random
 import string
-from .middleware import MessageMiddlewareQueue, MessageMiddlewareExchange
+from .middleware import MessageMiddlewareDisconnectedError, MessageMiddlewareMessageError, MessageMiddlewareQueue, MessageMiddlewareExchange
 
 class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
 
@@ -12,6 +13,24 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
         self.connection:pika.BlockingConnection = pika.BlockingConnection(pika.ConnectionParameters(host=host))
         self.channel:BlockingChannel = self.connection.channel()
         self.channel.queue_declare(queue=self.queue_name)
+
+    def send(self, message):
+        try:
+
+            self.channel.basic_publish(exchange='', routing_key=self.queue_name, body=message)
+
+        #Capturo errores por desconeccion especificos de RabbitMQ, no se tiene en cuenta
+        #desconeccion por problemas de socket, por ejemplo
+        except (PikaExceptions.AMQPConnectionError,
+                PikaExceptions.ChannelWrongStateError) as e:
+            raise MessageMiddlewareDisconnectedError (str(e)) from e
+        
+        except PikaExceptions.AMQPError as e:
+            raise MessageMiddlewareMessageError(str(e)) from e 
+        #Diferencio desconceccion por problema de Rabbit que por problema de network
+        except (ConnectionError, OSError) as e:
+            raise MessageMiddlewareDisconnectedError (str(e)) from e 
+        
 
 class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
     
