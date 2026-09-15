@@ -5,6 +5,12 @@ import pika.exceptions as PikaExceptions
 import random
 import string
 from .middleware import MessageMiddlewareDisconnectedError, MessageMiddlewareMessageError, MessageMiddlewareQueue, MessageMiddlewareExchange
+from common.exception_checker import ExceptionChecker
+
+_PIKA_ERROR_MAPPINGS = (
+    ((PikaExceptions.AMQPConnectionError, PikaExceptions.ChannelWrongStateError, ConnectionError, OSError), MessageMiddlewareDisconnectedError),
+    (PikaExceptions.AMQPError, MessageMiddlewareMessageError)
+)
 
 class _RabbitMQMiddlewareBase:
     def __init__(self, connection: pika.BlockingConnection, channel: BlockingChannel):
@@ -17,53 +23,22 @@ class _RabbitMQMiddlewareBase:
             nack = lambda: ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
             on_message_callback(body, ack, nack)
 
-        try:
+        with ExceptionChecker(*_PIKA_ERROR_MAPPINGS):
 
             #Necesito auto_ack=False, para que se llame a las funciones ack y nack. En la version actual
             #es False por defecto. 
             self.channel.basic_consume(queue=queue_name, on_message_callback=_on_message)
             self.channel.start_consuming()
-
-        #Capturo errores por desconeccion especificos de RabbitMQ, no se tiene en cuenta
-        #desconeccion por problemas de socket, por ejemplo
-        except (PikaExceptions.AMQPConnectionError,
-                PikaExceptions.ChannelWrongStateError) as e:
-            raise MessageMiddlewareDisconnectedError (str(e)) from e
         
-        except PikaExceptions.AMQPError as e:
-            raise MessageMiddlewareMessageError(str(e)) from e 
-        #Diferencio desconceccion por problema de Rabbit que por problema de network
-        except (ConnectionError, OSError) as e:
-            raise MessageMiddlewareDisconnectedError (str(e)) from e 
 
     def stop_consuming(self):
-            try: 
+            with ExceptionChecker(*_PIKA_ERROR_MAPPINGS):
                 self.channel.stop_consuming()
-            #Capturo errores por desconeccion especificos de RabbitMQ, no se tiene en cuenta
-            #desconeccion por problemas de socket, por ejemplo
-            except (PikaExceptions.AMQPConnectionError,
-                    PikaExceptions.ChannelWrongStateError) as e:
-                raise MessageMiddlewareDisconnectedError (str(e)) from e
-            #Diferencio desconceccion por problema de Rabbit que por problema de network
-            except (ConnectionError, OSError) as e:
-                raise MessageMiddlewareDisconnectedError (str(e)) from e 
     
     def close(self):
-        try:
+        with ExceptionChecker(*_PIKA_ERROR_MAPPINGS):
             self.channel.close()
             self.connection.close()
-        #Capturo errores por desconeccion especificos de RabbitMQ, no se tiene en cuenta
-        #desconeccion por problemas de socket, por ejemplo
-        except (PikaExceptions.AMQPConnectionError,
-                PikaExceptions.ChannelWrongStateError) as e:
-            raise MessageMiddlewareDisconnectedError (str(e)) from e
-        
-        except PikaExceptions.AMQPError as e:
-            raise MessageMiddlewareMessageError(str(e)) from e 
-        #Diferencio desconceccion por problema de Rabbit que por problema de network
-        except (ConnectionError, OSError) as e:
-            raise MessageMiddlewareDisconnectedError (str(e)) from e 
-
     
 
 class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
@@ -77,23 +52,9 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
         self._base = _RabbitMQMiddlewareBase(connection=self.connection, channel=self.channel)
 
     def send(self, message):
-        try:
-
+        with ExceptionChecker(*_PIKA_ERROR_MAPPINGS):
             self.channel.basic_publish(exchange='', routing_key=self.queue_name, body=message)
-
-        #Capturo errores por desconeccion especificos de RabbitMQ, no se tiene en cuenta
-        #desconeccion por problemas de socket, por ejemplo
-        except (PikaExceptions.AMQPConnectionError,
-                PikaExceptions.ChannelWrongStateError) as e:
-            raise MessageMiddlewareDisconnectedError (str(e)) from e
-        
-        except PikaExceptions.AMQPError as e:
-            raise MessageMiddlewareMessageError(str(e)) from e 
-        #Diferencio desconceccion por problema de Rabbit que por problema de network
-        except (ConnectionError, OSError) as e:
-            raise MessageMiddlewareDisconnectedError (str(e)) from e 
-
-        
+       
 
     def start_consuming(self, on_message_callback):
         self._base.start_consuming(queue_name=self.queue_name, on_message_callback=on_message_callback)
@@ -127,22 +88,9 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
         
 
     def send(self, message):
-        try:
+        with ExceptionChecker(*_PIKA_ERROR_MAPPINGS):
             for routing_key in self.routing_keys:
                 self.channel.basic_publish(exchange=self.exchange_name, routing_key=routing_key, body=message)
-
-        #Capturo errores por desconeccion especificos de RabbitMQ, no se tiene en cuenta
-        #desconeccion por problemas de socket, por ejemplo
-        except (PikaExceptions.AMQPConnectionError,
-                PikaExceptions.ChannelWrongStateError) as e:
-            raise MessageMiddlewareDisconnectedError (str(e)) from e
-        
-        except PikaExceptions.AMQPError as e:
-            raise MessageMiddlewareMessageError(str(e)) from e 
-        
-        #Diferencio desconceccion por problema de Rabbit que por problema de network
-        except (ConnectionError, OSError) as e:
-            raise MessageMiddlewareDisconnectedError (str(e)) from e 
 
 
     def start_consuming(self, on_message_callback):
